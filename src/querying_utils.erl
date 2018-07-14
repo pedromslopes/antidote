@@ -38,6 +38,7 @@
 -include("antidote.hrl").
 
 -define(CRDT_INDEX, antidote_crdt_index).
+-define(CRDT_INDEX_P, antidote_crdt_index_p).
 -define(CRDT_MAP, antidote_crdt_map_go).
 -define(CRDT_SET, antidote_crdt_set_aw).
 -define(INVALID_OP_MSG(Operation, CRDT), io_lib:format("The operation ~p is not part of the ~p specification", [Operation, CRDT])).
@@ -178,6 +179,9 @@ create_crdt_update({_Key, ?CRDT_MAP, _Bucket} = ObjKey, UpdateOp, Value) ->
 create_crdt_update({_Key, ?CRDT_INDEX, _Bucket} = ObjKey, UpdateOp, Value) ->
     Update = index_update(Value),
     {ObjKey, UpdateOp, Update};
+create_crdt_update({_Key, ?CRDT_INDEX_P, _Bucket} = ObjKey, UpdateOp, Value) ->
+    Update = index_p_update(UpdateOp, Value),
+    {ObjKey, UpdateOp, Update};
 create_crdt_update(ObjKey, UpdateOp, Value) ->
     set_update(ObjKey, UpdateOp, Value).
 
@@ -268,6 +272,7 @@ map_update(Values) when is_list(Values) ->
     lists:foldl(fun(Update, Acc) ->
         lists:append(Acc, map_update(Update))
                 end, [], Values).
+
 index_update({CRDT, Key, {Op, Value} = Operation}) ->
     case CRDT:is_operation(Operation) of
         true -> [{CRDT, Key, {Op, Value}}];
@@ -280,6 +285,20 @@ index_update({CRDT, Key, Operations}) when is_list(Operations) ->
 index_update(Values) when is_list(Values) ->
     lists:foldl(fun(Update, Acc) ->
         lists:append(Acc, index_update(Update))
+                end, [], Values).
+
+index_p_update(UpdateOp, {_Key, {_Op, _Value}} = Operation) ->
+    case ?CRDT_INDEX_P:is_operation({UpdateOp, Operation}) of
+        true -> [Operation];
+        false -> throw(lists:flatten(?INVALID_OP_MSG(Operation, ?CRDT_INDEX_P)))
+    end;
+index_p_update(UpdateOp, {Key, Operations}) when is_list(Operations) ->
+    lists:foldl(fun(Op, Acc) ->
+        lists:append(Acc, index_p_update(UpdateOp, {Key, Op}))
+                end, [], Operations);
+index_p_update(UpdateOp, Values) when is_list(Values) ->
+    lists:foldl(fun(Update, Acc) ->
+        lists:append(Acc, index_p_update(UpdateOp, Update))
                 end, [], Values).
 
 set_update({_Key, ?CRDT_SET, _Bucket} = ObjKey, UpdateOp, Value) ->
