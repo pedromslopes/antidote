@@ -42,6 +42,7 @@
          is_primary_key/2,
          is_column/2,
          is_foreign_key/2,
+         get_foreign_key/2,
          shadow_column_state/4]).
 
 table(?TABLE(TName, _Policy, _Cols, _SCols, _Idx)) -> TName.
@@ -65,7 +66,7 @@ primary_key_name(Table) ->
 all_column_names(Table) ->
     TCols = column_names(Table),
     SCols = lists:map(fun(?FK(FKName, _FKType, _RefTable, _RefCol, _DelRule)) -> FKName end, foreign_keys(Table)),
-    lists:append([['#st', '#version'], TCols, SCols]).
+    lists:append([TCols, SCols]).
 
 %% Metadata from tables are always read from the database;
 %% Only individual table metadata is stored on cache.
@@ -98,13 +99,14 @@ is_column(ColumnName, ?TABLE(_TName, _Policy, Cols, _FKeys, _Idx)) when is_map(C
     ColList = maps:get(?COLUMNS, Cols),
     lists:member(ColumnName, ColList).
 
-is_foreign_key(ColumnName, ?TABLE(_TName, _Policy, _Cols, FKeys, _Idx)) ->
-    Aux = querying_utils:first_occurrence(
+is_foreign_key(ColumnName, Table) ->
+    get_foreign_key(ColumnName, Table) =/= undefined.
+
+get_foreign_key(ColumnName, ?TABLE(_TName, _Policy, _Cols, FKeys, _Idx)) ->
+    querying_utils:first_occurrence(
         fun(?FK(FkName, _FkType, _RefTable, _RefCol, _DelRule)) ->
             ColumnName == FkName
-        end, FKeys),
-
-    Aux =/= undefined.
+        end, FKeys).
 
 % RecordData represents a single record, i.e. a list of tuples on the form:
 % {{col_name, datatype}, value}

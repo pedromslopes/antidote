@@ -192,7 +192,7 @@ generate_index_updates(Key, Type, Bucket, Param, Transaction) ->
                                 end, Idxs),
                                 lists:append(IdxUpdates2, AuxUpdates)
                         end
-                    end, [], Updates),
+                    end, [], NewRecordUpdates),
 
                     %lager:info("SIdxUpdates: ~p", [SIdxUpdates]),
 
@@ -419,16 +419,16 @@ split_updates([?MAP_UPD(?VERSION_COL, _, Op, Val) | Updates], Table, RecordUpds,
     split_updates(Updates, Table, RecordUpds, lists:append(IdxUpds, [FormatUpd]));
 split_updates([Update | Updates], Table, RecordUpds, IdxUpds) ->
     ?MAP_UPD(ColName, _, Op, Val) = Update,
-    case table_utils:is_foreign_key(ColName, Table) of
-        true ->
+    case table_utils:get_foreign_key(ColName, Table) of
+        ?FK(ColName, _, _, _, _) = NewColName ->
             RefsList = case lists:keyfind(refs, 1, IdxUpds) of
                            false -> [];
                            {refs, List} -> List
                        end,
-            NewRefsList = lists:append(RefsList, {ColName, {Op, Val}}),
-            NewIdxUpds = lists:keystore(refs, 1, RefsList, {refs, NewRefsList}),
+            NewRefsList = lists:append(RefsList, [{NewColName, {Op, Val}}]),
+            NewIdxUpds = lists:keystore(refs, 1, IdxUpds, {refs, NewRefsList}),
             split_updates(Updates, Table, RecordUpds, NewIdxUpds);
-        false ->
+        undefined ->
             split_updates(Updates, Table, lists:append(RecordUpds, [Update]), IdxUpds)
     end;
 split_updates([], _Table, RecordUpds, IdxUpds) ->
