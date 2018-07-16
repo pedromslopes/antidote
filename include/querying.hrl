@@ -41,6 +41,9 @@
 %% Indexes definitions
 -define(INDEX(IndexName, TableName, Attributes), {IndexName, TableName, Attributes}).
 -define(is_index(Index), is_tuple(Index) andalso tuple_size(Index) =:= 3).
+-define(INDEX_ENTRY(Key, BoundObject, State, Version, Refs), {Key, {BoundObject, State, Version, Refs}}).
+-define(is_index_entry(IndexEntry), is_tuple(IndexEntry) andalso tuple_size(IndexEntry) =:= 5).
+-define(INDEX_REF(ColName, RefSpec, RefValue, RefVersion), {ColName, {RefSpec, {RefValue, RefVersion}}}).
 -define(PINDEX_PREFIX, "#_").
 -define(SINDEX_PREFIX, "#2i_").
 -define(PINDEX_DT, antidote_crdt_index_p).

@@ -66,7 +66,7 @@ primary_key_name(Table) ->
 all_column_names(Table) ->
     TCols = column_names(Table),
     SCols = lists:map(fun(?FK(FKName, _FKType, _RefTable, _RefCol, _DelRule)) -> FKName end, foreign_keys(Table)),
-    lists:append([TCols, SCols]).
+    lists:append([['#st', '#version'], TCols, SCols]).
 
 %% Metadata from tables are always read from the database;
 %% Only individual table metadata is stored on cache.

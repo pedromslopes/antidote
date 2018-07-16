@@ -68,6 +68,8 @@ assert_visibility(State, Rule, Versions, SourceTable, TxId) ->
     case table_crps:dep_level(Policy) of
         ?REMOVE_WINS ->
             ExplicitState andalso check_versions(Versions, TxId);
+        ?ADD_WINS ->
+            ExplicitState andalso check_versions(Versions, TxId);
         _Other ->
             ExplicitState
     end.
@@ -77,12 +79,17 @@ check_versions([[Version, TName] | Versions], TxId) ->
         check_versions(Versions, TxId);
 check_versions([], _TxId) -> true.
 
-assert_visibility({Key, Version}, TableName, TxId) ->
-    KeyAtom = querying_utils:to_atom(Key),
-    BoundObj = querying_utils:build_keys(KeyAtom, ?TABLE_DT, TableName),
-    [RefData] = querying_utils:read_keys(value, BoundObj, TxId),
-    VersionKey = {?VERSION_COL, ?VERSION_COL_DT},
-    RefVersion = record_utils:lookup_value(VersionKey, RefData),
+assert_visibility({_FkSpec, {Key, Version}}, TableName, TxId) ->
+    %KeyAtom = querying_utils:to_atom(Key),
+    %BoundObj = querying_utils:build_keys(KeyAtom, ?TABLE_DT, TableName),
+    %[RefData] = querying_utils:read_keys(value, BoundObj, TxId),
+    %lager:info("Visibility -- Key: ~p", [Key]),
+    IndexEntry = indexing:read_index_function(primary, TableName, {get, Key}, TxId),
+    %lager:info("Visibility -- Index entry: ~p", [IndexEntry]),
+
+    %VersionKey = {?VERSION_COL, ?VERSION_COL_DT},
+    %RefVersion = record_utils:lookup_value(VersionKey, RefData),
+    RefVersion = indexing:entry_version(IndexEntry),
 
     Table = table_utils:table_metadata(TableName, TxId),
     Policy = table_utils:policy(Table),
@@ -91,17 +98,23 @@ assert_visibility({Key, Version}, TableName, TxId) ->
     %lager:info("RefData: ~p", [RefData]),
     %lager:info("RefVersion: ~p", [RefVersion]),
     %lager:info("Policy: ~p", [Policy]),
+    RefDepLevel = table_crps:dep_level(Policy),
+    RefPDepLevel = table_crps:p_dep_level(Policy),
     FinalRes =
-        case table_crps:p_dep_level(Policy) of
+        case RefPDepLevel of
             ?REMOVE_WINS ->
                 RefVersion =:= Version andalso
-                    is_visible(RefData, Table, TxId);
+                    is_visible(IndexEntry, Table, TxId);
             _ ->
+                case RefDepLevel of
+                    ?REMOVE_WINS -> is_visible(IndexEntry, Table, TxId);
+                    _ -> true
+                end
                 %is_visible(RefData, Table, TxId)
                 %RefRule = table_crps:get_rule(Policy),
                 %RefState = record_utils:lookup_value({?STATE_COL, ?STATE_COL_DT}, RefData),
                 %find_last(RefState, RefRule, ignore) =/= d
-                true
+                %true
         end,
 
     %lager:info("{~p, ~p}: ~p", [Key, Version, FinalRes]),
@@ -113,23 +126,28 @@ is_function({FuncName, Args}) ->
         _ -> false
     end.
 
-replace_args({FuncName, Args}, TName, TCols, Record) ->
-    replace_args(FuncName, Args, TName, TCols, Record, []).
+replace_args({FuncName, Args}, Table, Record, TxId) ->
+    replace_args(FuncName, Args, Table, Record, TxId, []).
 
-replace_args(FName, [Arg | Args], TName, TCols, Record, AccArgs) when is_list(Arg) ->
-    NewArg = replace_args({FName, Arg}, TName, TCols, Record),
-    replace_args(FName, Args, TName, TCols, Record, lists:append(AccArgs, [NewArg]));
-replace_args(FName, [Arg | Args], TName, TCols, Record, AccArgs) ->
+replace_args(FName, [Arg | Args], Table, Record, TxId, AccArgs) when is_list(Arg) ->
+    NewArg = replace_args({FName, Arg}, Table, Record, TxId),
+    replace_args(FName, Args, Table, Record, TxId, lists:append(AccArgs, [NewArg]));
+replace_args(FName, [Arg | Args], Table, Record, TxId, AccArgs) ->
+    TCols = table_utils:all_column_names(Table),
     NewArg =
         case ?is_column(Arg) of
             true ->
                 ?COLUMN(ColName) = Arg,
                 case lists:member(ColName, TCols) of
                     true ->
-                        ?ATTRIBUTE(_C, _T, ColValue) =
-                            record_utils:get_column(ColName, Record),
-                        lists:append(AccArgs, [ColValue]);
+                        %?ATTRIBUTE(_C, _T, ColValue) =
+                        %    record_utils:get_column(ColName, Record),
+                        case fetch_column_val(ColName, Record, Table, TxId) of
+                            undefined -> AccArgs;
+                            ColValue -> lists:append(AccArgs, [ColValue])
+                        end;
                     false ->
+                        TName = table_utils:table(Table),
                         ErrorMsg =
                             io_lib:format("Column ~p in function ~p is invalid for table ~p", [ColName, FName, TName]),
                         throw(lists:flatten(ErrorMsg))
@@ -137,8 +155,8 @@ replace_args(FName, [Arg | Args], TName, TCols, Record, AccArgs) ->
             false ->
                 lists:append(AccArgs, [Arg])
         end,
-    replace_args(FName, Args, TName, TCols, Record, NewArg);
-replace_args(_FName, [], _TName, _TCols, _Record, Acc) ->
+    replace_args(FName, Args, Table, Record, TxId, NewArg);
+replace_args(_FName, [], _Table, _Record, _TxId, Acc) ->
     Acc.
 
 %% ===================================================================
@@ -156,9 +174,10 @@ pick(V1, V1, _List) -> V1;
 pick(V1, V2, [_V3 | Tail]) -> pick(V1, V2, Tail);
 pick(_, _, []) -> error.
 
-is_visible(ObjData, Table, TxId) ->
+is_visible(IndexEntry, Table, TxId) ->
     Rule = table_crps:get_rule(Table),
-    ObjState = record_utils:lookup_value({?STATE_COL, ?STATE_COL_DT}, ObjData),
+    %ObjState = record_utils:lookup_value({?STATE_COL, ?STATE_COL_DT}, ObjData),
+    ObjState = indexing:entry_state(IndexEntry),
 
     FKeys = table_utils:foreign_keys(Table),
 
@@ -168,23 +187,44 @@ is_visible(ObjData, Table, TxId) ->
     %lager:info("FKeys: ~p", [FKeys]),
     %lager:info("ObjData: ~p", [ObjData]),
 
-    [PKName] = table_utils:primary_key_name(Table),
+    %[PKName] = table_utils:primary_key_name(Table),
     %lager:info("PKName: ~p", [PKName]),
-    PKValue = querying_utils:to_atom(record_utils:lookup_value(PKName, ObjData)),
+    %PKValue = querying_utils:to_atom(record_utils:lookup_value(PKName, ObjData)),
     %lager:info("PKValue: ~p", [PKValue]),
-    ObjKey = {PKValue, ?TABLE_DT, table_utils:table(Table)},
+    TName = table_utils:table(Table),
+    %ObjKey = {PKValue, ?TABLE_DT, table_utils:table(Table)},
 
     %% TODO delete ObjData
     find_last(ObjState, Rule, ignore) =/= d andalso
-        (is_visible0(FKeys, ObjData, TxId) orelse
-        record_utils:delete_record(ObjKey, TxId)).
+        (is_visible0(FKeys, IndexEntry, TxId) orelse
+        indexing:delete_entry(TName, IndexEntry, TxId)).
+        %record_utils:delete_record(ObjKey, TxId)).
 
-is_visible0([?FK(FkName, _, FkTable, _, _) | Tail], Record, TxId) when length(FkName) == 1 ->
-    ObjVersion = record_utils:lookup_value(FkName, Record),
-    assert_visibility(ObjVersion, FkTable, TxId) andalso is_visible0(Tail, Record, TxId);
-is_visible0([?FK(FkName, _, _, _, _) | Tail], Record, TxId) when length(FkName) > 1 ->
-    is_visible0(Tail, Record, TxId);
-is_visible0([], _Record, _TxId) -> true.
+is_visible0([?FK(FkName, _, FkTable, _, _) | Tail], Entry, TxId)
+    when length(FkName) == 1 ->
+    %ObjVersion = record_utils:lookup_value(FkName, Record),
+    ?INDEX_REF(_, FkSpec, ObjVal, ObjVersion) = indexing:get_ref_by_name(FkName, Entry),
+    assert_visibility({FkSpec, {ObjVal, ObjVersion}}, FkTable, TxId) andalso
+        is_visible0(Tail, Entry, TxId);
+is_visible0([?FK(FkName, _, _, _, _) | Tail], Entry, TxId)
+    when length(FkName) > 1 ->
+    is_visible0(Tail, Entry, TxId);
+is_visible0([], _Entry, _TxId) -> true.
+
+fetch_column_val(ColName, Record, Table, TxId) ->
+    TName = table_utils:table(Table),
+    case record_utils:lookup_value(ColName, Record) of
+        undefined ->
+            [PkName] = table_utils:primary_key_name(Table),
+            PkRawVal = record_utils:lookup_value(PkName, Record),
+            IndexEntry = indexing:read_index_function(primary, TName, {get, PkRawVal}, TxId),
+            %lager:info("Read an index entry: ~p", [IndexEntry]),
+            %lager:info("Get field from: ~p", [ColName]),
+            Value = indexing:get_field(ColName, IndexEntry),
+            %lager:info("Returning value: ~p", [Value]),
+            Value;
+        Value -> Value
+    end.
 
 get_function_info(FunctionName) when is_atom(FunctionName) ->
     proplists:lookup(FunctionName, ?MODULE:module_info(exports)).

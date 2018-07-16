@@ -58,9 +58,9 @@ query_filter(Filter, TxId) when is_list(Filter) ->
             FilteredResult =
                 case Conditions of
                     [] ->
-                        Index = indexing:read_index(primary, TableName, TxId),
-                        Keys = lists:map(fun({EntryKey, _EntrySet}) -> EntryKey end, Index),
-                        Records = read_records(Keys, TableName, TxId),
+                        {_, _, Index} = indexing:read_index(primary, TableName, TxId),
+                        Keys = lists:map(fun(Entry) -> indexing:entry_bobj(Entry) end, Index),
+                        Records = read_records(Keys, TxId),
                         prepare_records(table_utils:column_names(Table), Table, Records);
                     _Else ->
                         apply_filter(Conditions, Table, TxId)
@@ -180,8 +180,8 @@ read_remaining(Conditions, Table, CurrentData, TxId) ->
 
 iterate_ranges(RangeQueries, Table, TxId) ->
     TableName = table_utils:table(Table),
-    Index = indexing:read_index(primary, TableName, TxId),
-    Keys = lists:map(fun({_EntryKey, EntrySet}) -> [Key] = EntrySet, Key end, Index),
+    {_, _, Index} = indexing:read_index(primary, TableName, TxId),
+    Keys = lists:map(fun(Entry) -> indexing:entry_bobj(Entry) end, Index),
     Data = read_records(Keys, TxId),
     PreparedData = prepare_records(table_utils:column_names(Table), Table, Data),
     iterate_ranges(RangeQueries, Table, PreparedData, TxId).
@@ -295,10 +295,10 @@ prepare_records0(BCounterCols, [Record | Records], Acc) ->
     prepare_records0(BCounterCols, Records, NewObjsAcc);
 prepare_records0(_, [], Acc) -> Acc.
 
-read_records(Keys, TableName, TxId) when is_list(Keys) ->
-    record_utils:record_data(Keys, TableName, TxId);
-read_records(PKey, TableName, TxId) ->
-    record_utils:record_data(PKey, TableName, TxId).
+%read_records(Keys, TableName, TxId) when is_list(Keys) ->
+%    record_utils:record_data(Keys, TableName, TxId);
+%read_records(PKey, TableName, TxId) ->
+%    record_utils:record_data(PKey, TableName, TxId).
 
 read_records(Keys, TxId) when is_list(Keys) ->
     record_utils:record_data(Keys, TxId);
@@ -375,9 +375,9 @@ interpret_index({primary, TName}, Table, RangeQueries, TxId) ->
 
     IdxData = filter_index(GetRange, primary, TName, TxId),
 
-    lists:foldl(fun({_IdxCol, PKs}, Set) ->
+    lists:foldl(fun(Entry, Set) ->
         %% there's an assumption that the accumulator will never have repeated keys
-        ordsets:union(Set, PKs)
+        ordsets:add_element(indexing:entry_bobj(Entry), Set)
     end, ordsets:new(), IdxData);
 
 interpret_index({secondary, {Name, TName, [Col]}}, _Table, RangeQueries, TxId) -> %% TODO support more columns
@@ -399,12 +399,15 @@ filter_index(Range, IndexType, IndexName, TxId) ->
             {{{_, Val}, {_, Val}}, _} = Range,
             Res = indexing:read_index_function(IndexType, IndexName, {get, Val}, TxId),
             case Res of
-                {error, _} -> [];
+                [] -> [];
                 _Else -> [Res]
             end;
         notequality ->
             {_, Excluded} = Range,
-            Aux = indexing:read_index(IndexType, IndexName, TxId),
+            Aux = case indexing:read_index(IndexType, IndexName, TxId) of
+                      {_, _, Entries} -> Entries;
+                      Entries -> Entries
+                  end,
 
             lists:filter(fun({IdxVal, _Set}) ->
                 %% inequality predicate

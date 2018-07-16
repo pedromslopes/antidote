@@ -84,12 +84,11 @@ delete_record(ObjKey, TxId) ->
     ok = querying_utils:write_keys(Update, TxId),
     false.
 
+satisfies_function(_, _, [], _) -> false;
 satisfies_function({Func, Predicate}, Table, Record, TxId) ->
     ?FUNCTION(FuncName, Args) = Func,
-    TableName = table_utils:table(Table),
-    AllCols = table_utils:all_column_names(Table),
 
-    ReplaceArgs = builtin_functions:replace_args({FuncName, Args}, TableName, AllCols, Record),
+    ReplaceArgs = builtin_functions:replace_args({FuncName, Args}, Table, Record, TxId),
     AppendTable = case FuncName of
                       assert_visibility ->
                           lists:append([ReplaceArgs, [Table]]);
@@ -99,6 +98,7 @@ satisfies_function({Func, Predicate}, Table, Record, TxId) ->
     Result = builtin_functions:exec({FuncName, AppendTable}, TxId),
     Predicate(Result).
 
+satisfies_predicate(_, _, []) -> false;
 satisfies_predicate(Column, Predicate, Record) when is_list(Record) ->
     Find = querying_utils:first_occurrence(
         fun(?ATTRIBUTE(ColName, CRDT, Val)) ->
