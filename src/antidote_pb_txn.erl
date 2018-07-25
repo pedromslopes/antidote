@@ -60,7 +60,9 @@ decode(Code, Bin) ->
         #apbstaticupdateobjects{} ->
             {ok, Msg, {"antidote.staticupdateobjects",<<>>}};
         #apbstaticreadobjects{} ->
-            {ok, Msg, {"antidote.staticreadobjects",<<>>}}
+            {ok, Msg, {"antidote.staticreadobjects",<<>>}};
+        #apbqueryobjects{} ->
+            {ok, Msg, {"antidote.queryobjects",<<>>}}
     end.
 
 %% @doc encode/1 callback. Encodes an outgoing response message.
@@ -203,6 +205,19 @@ process(#apbstaticreadobjects{
             {reply, antidote_pb_codec:encode(static_read_objects_response,
                                              {ok, lists:zip(Objects, Results), CommitTime}),
              State}
+    end;
+process(#apbqueryobjects{filter = BinFilter, transaction_descriptor = Td}, State) ->
+    TxId = binary_to_term(Td),
+    Filter = binary_to_term(BinFilter),
+    Response = antidote:query_objects(Filter, TxId),
+    case Response of
+        {error, Reason} ->
+            {reply, antidote_pb_codec:encode(read_objects_response,
+                {error, Reason}), State};
+        {ok, Results} ->
+            {reply, antidote_pb_codec:encode(read_objects_response,
+                {ok, Results}),
+                State}
     end.
 
 %% @doc process_stream/3 callback. This service does not create any
