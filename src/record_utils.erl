@@ -40,27 +40,26 @@
 record_data(Keys, TxId) when is_list(Keys) ->
     case querying_utils:read_keys(value, Keys, TxId) of
         [[]] -> [];
-        ObjValues -> ObjValues
+        ObjValues -> [protobufs_utils:decode_object(?TABLE_DT, Obj) || Obj <- ObjValues]
     end;
 record_data(Key, TxId) ->
     record_data([Key], TxId).
 
 record_data(PKeys, TableName, TxId)
-    when is_list(PKeys) andalso is_atom(TableName) ->
-    PKeyAtoms = lists:map(fun(PKey) -> querying_utils:to_atom(PKey) end, PKeys),
-    ObjKeys = querying_utils:build_keys(PKeyAtoms, ?TABLE_DT, TableName),
+    when is_list(PKeys) ->
+    AtomKeys = [querying_utils:to_atom(Key) || Key <- PKeys],
+    ObjKeys = querying_utils:build_keys(AtomKeys, ?TABLE_DT, TableName),
     case querying_utils:read_keys(value, ObjKeys, TxId) of
         [[]] -> [];
-        ObjValues -> ObjValues
+        ObjValues -> [protobufs_utils:decode_object(?TABLE_DT, Obj) || Obj <- ObjValues]
     end;
 record_data(PKeys, Table, TxId)
     when is_list(PKeys) ->
-    PKeyAtoms = lists:map(fun(PKey) -> querying_utils:to_atom(PKey) end, PKeys),
-    ZippedKeys = lists:zip(PKeyAtoms, PKeys),
-    ObjKeys = querying_utils:build_keys_from_table(ZippedKeys, Table, TxId),
+    AtomKeys = [querying_utils:to_atom(Key) || Key <- PKeys],
+    ObjKeys = querying_utils:build_keys_from_table(AtomKeys, Table, TxId),
     case querying_utils:read_keys(value, ObjKeys, TxId) of
         [[]] -> [];
-        ObjValues -> ObjValues
+        ObjValues -> [protobufs_utils:decode_object(?TABLE_DT, Obj) || Obj <- ObjValues]
     end;
 record_data(PKey, Table, TxId) ->
     record_data([PKey], Table, TxId).

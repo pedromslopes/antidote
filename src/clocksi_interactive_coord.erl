@@ -377,7 +377,7 @@ finish_op(From, Key, Result) ->
 %% @doc Initialize the state.
 %% #Locks
 init([From, ClientClock, Properties, StayAlive]) ->
-    lager:info("clocksi_interactive_coord_11111(Properties: ~w, StayAlive: ~w)~n",[Properties,StayAlive]),
+    %lager:info("clocksi_interactive_coord_11111(Properties: ~w, StayAlive: ~w)~n",[Properties,StayAlive]),
     BaseState = init_state(StayAlive, false, false, Properties),
 
     Locks = lists:keyfind(locks,1,Properties),
@@ -397,7 +397,7 @@ init([From, ClientClock, Properties, StayAlive]) ->
 %% @doc Initialize static transaction with Operations.
 %% #Locks
 init([From, ClientClock, Properties, StayAlive, Operations]) ->
-    lager:info("clocksi_interactive_coord_22222(Properties: ~w, StayAlive: ~w)~n",[Properties,StayAlive]),
+    %lager:info("clocksi_interactive_coord_22222(Properties: ~w, StayAlive: ~w)~n",[Properties,StayAlive]),
     BaseState = init_state(StayAlive, true, true, Properties),
 
     Locks = lists:keyfind(locks,1,Properties),
@@ -939,7 +939,7 @@ create_transaction_record_with_locks(ClientClock, StayAlive, From, _IsStatic, Pr
                    self()
            end,
     TransactionId = #tx_id{local_start_time = LocalClock, server_pid = Name},
-    lager:debug("create_transaction_record_with_locks: Locks: ~p, Shared_Locks: ~p, Exclusive_Locks: ~p", [Locks,Shared_Locks,Exclusive_Locks]),
+    %lager:debug("create_transaction_record_with_locks: Locks: ~p, Shared_Locks: ~p, Exclusive_Locks: ~p", [Locks,Shared_Locks,Exclusive_Locks]),
     case {Locks,Shared_Locks,Exclusive_Locks} of
         {_,[],[]}->
             case get_locks(?How_LONG_TO_WAIT_FOR_LOCKS, TransactionId, Locks) of

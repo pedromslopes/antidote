@@ -77,7 +77,7 @@ query_filter(Filter, TxId) when is_list(Filter) ->
     end.
 
 get_partial_object(Key, Type, Bucket, Filter, TxId) ->
-    ObjectKey = querying_utils:build_keys(Key, Type, Bucket),
+    ObjectKey = querying_utils:build_keys(querying_utils:to_atom(Key), Type, Bucket),
     [Object] = querying_utils:read_keys(value, ObjectKey, TxId),
     {ok, apply_projection(Filter, Object)}.
 get_partial_object(ObjectKey, Filter, TxId) when is_tuple(ObjectKey) ->
@@ -147,7 +147,7 @@ read_remaining(Conditions, Table, CurrentData, TxId) ->
         _Else ->
             case CurrentData of
                 nil ->
-                    {Remain, Indexes} = read_indexes(RangeQueries, Table),
+                    {RemainRanges, Indexes} = read_indexes(RangeQueries, Table),
                     LeastKeys = lists:foldl(fun(Index, Curr) ->
                         ReadKeys = interpret_index(Index, Table, RangeQueries, TxId),
                         case Curr of
@@ -164,9 +164,9 @@ read_remaining(Conditions, Table, CurrentData, TxId) ->
                             Objects = read_records(KeyList, TxId),
                             PreparedObjs = prepare_records(table_utils:column_names(Table), Table, Objects),
 
-                            RemainRanges = dict:filter(fun(Column, _Range) ->
-                                lists:member(Column, Remain)
-                            end, RangeQueries),
+                            %RemainRanges = dict:filter(fun(Column, _Range) ->
+                            %    lists:member(Column, Remain)
+                            %end, RangeQueries),
 
                             case dict:is_empty(RemainRanges) of
                                 true -> PreparedObjs;
@@ -339,9 +339,9 @@ read_predicate(Range) ->
 
 read_indexes(RangeQueries, Table) ->
     TableName = table_utils:name(Table),
-    dict:fold(fun(Column, _Range, {RemainAcc, IdxAcc}) ->
+    dict:fold(fun(Column, Range, {RemainAcc, IdxAcc}) ->
         case ?is_function(Column) of
-            true -> {lists:append(RemainAcc, [Column]), IdxAcc};
+            true -> {dict:store(Column, Range, RemainAcc), IdxAcc};
             false ->
                 case table_utils:is_primary_key(Column, Table) of
                     true ->
@@ -349,12 +349,12 @@ read_indexes(RangeQueries, Table) ->
                     false ->
                         SIndexes = table_utils:indexes(Table),
                         case find_index_by_attribute(Column, SIndexes) of
-                            [] -> {lists:append(RemainAcc, [Column]), IdxAcc};
+                            [] -> {dict:store(Column, Range, RemainAcc), IdxAcc};
                             [SIndex] -> {RemainAcc, lists:append(IdxAcc, [{secondary, SIndex}])}
                         end
                 end
         end
-    end, {[], []}, RangeQueries).
+    end, {dict:new(), []}, RangeQueries).
 
 interpret_index({primary, TName}, Table, RangeQueries, TxId) ->
     % TODO old code; uncomment to use with an antidote_crdt_set_go type index
@@ -366,9 +366,10 @@ interpret_index({primary, TName}, Table, RangeQueries, TxId) ->
     %ordsets:from_list(filter_keys(FilterFun, IdxData));
 
     [PKCol] = table_utils:primary_key_name(Table),
+    PKSpec = table_utils:get_column(PKCol, Table),
     GetRange = range_queries:lookup_range(PKCol, RangeQueries),
 
-    IdxData = filter_index(GetRange, primary, TName, Table, TxId),
+    IdxData = filter_index(GetRange, primary, TName, PKSpec, Table, TxId),
 
     lists:foldl(fun({_RawKey, BoundObj}, Set) ->
         %% there's an assumption that the accumulator will never have repeated keys
@@ -378,28 +379,33 @@ interpret_index({primary, TName}, Table, RangeQueries, TxId) ->
 interpret_index({secondary, {Name, TName, [Col]}}, Table, RangeQueries, TxId) -> %% TODO support more columns
     GetRange = range_queries:lookup_range(Col, RangeQueries),
 
-    IdxData = filter_index(GetRange, secondary, {TName, Name}, Table, TxId),
+    ColSpec = table_utils:get_column(Col, Table),
+    IdxData = filter_index(GetRange, secondary, {TName, Name}, ColSpec, Table, TxId),
 
     lists:foldl(fun({_IdxCol, PKs}, Set) ->
         %% there's an assumption that the accumulator will never have repeated keys
         ordsets:union(Set, PKs)
     end, ordsets:new(), IdxData).
 
-send_range({_, infinity}) -> infinity;
-send_range({Bound, Val}) -> {Bound, Val}.
+send_range({_, infinity}, _) ->
+    infinity;
+send_range({Bound, Val}, ColSpec) ->
+    BinVal = send_binary(Val, ColSpec),
+    {Bound, BinVal}.
 
-filter_index(Range, IndexType, IndexName, Table, TxId) ->
+filter_index(Range, IndexType, IndexName, ColSpec, Table, TxId) ->
     case range_type(Range) of
         equality ->
             {{{_, Val}, {_, Val}}, _} = Range,
+            BinVal = send_binary(Val, ColSpec),
             Res =
                 case IndexType of
                     primary ->
                         AtomVal = querying_utils:to_atom(Val),
-                        [BObj] = querying_utils:build_keys_from_table({AtomVal, Val}, Table, TxId),
-                        {Val, BObj};
+                        [BObj] = querying_utils:build_keys_from_table(AtomVal, Table, TxId),
+                        {BinVal, BObj};
                     secondary ->
-                        indexing:read_index_function(IndexType, IndexName, {get, Val}, TxId)
+                        indexing:read_index_function(IndexType, IndexName, {get, BinVal}, TxId)
                 end,
             case Res of
                 {error, _} -> [];
@@ -409,20 +415,31 @@ filter_index(Range, IndexType, IndexName, Table, TxId) ->
             {_, Excluded} = Range,
             Aux = indexing:read_index(IndexType, IndexName, TxId),
 
+            EncExcluded = [send_binary(Elem, ColSpec) || Elem <- Excluded],
             lists:filter(fun({IdxVal, _}) ->
                 %% inequality predicate
-                not lists:member(IdxVal, Excluded)
+                not lists:member(IdxVal, EncExcluded)
             end, Aux);
         range ->
             {{LeftBound, RightBound}, Excluded} = Range,
-            Index = indexing:read_index_function(IndexType,
-                IndexName, {range, {send_range(LeftBound), send_range(RightBound)}}, TxId),
+            Index = indexing:read_index_function(IndexType, IndexName,
+                {range, {send_range(LeftBound, ColSpec), send_range(RightBound, ColSpec)}}, TxId),
 
-            lists:filter(fun({IdxCol, _PKs}) ->
+            EncExcluded = [send_binary(Elem, ColSpec) || Elem <- Excluded],
+            lists:filter(fun({IdxCol, _}) ->
                 %% inequality predicate
-                not lists:member(IdxCol, Excluded)
+                not lists:member(IdxCol, EncExcluded)
             end, Index)
     end.
+
+send_binary(Value, ColSpec) ->
+    {_Name, Type, _Constraint} = ColSpec,
+    send_binary({Type, Value}).
+
+send_binary({?AQL_VARCHAR, Value}) -> term_to_binary(Value);
+send_binary({?AQL_INTEGER, Value}) -> term_to_binary(Value);
+send_binary({?AQL_COUNTER_INT, Value}) -> Value;
+send_binary({?AQL_BOOLEAN, Value}) -> Value.
 
 %%====================================================================
 %% Eunit tests

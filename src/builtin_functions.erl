@@ -81,10 +81,9 @@ check_versions([], _TxId) -> true.
 
 assert_visibility({Key, Version}, TableName, TxId) ->
     Table = table_utils:table_metadata(TableName, TxId),
-    KeyAtom = querying_utils:to_atom(Key),
-    %BoundObj = querying_utils:build_keys(KeyAtom, ?TABLE_DT, TableName),
-    BoundObj = querying_utils:build_keys_from_table({KeyAtom, Key}, Table, TxId),
-    [RefData] = querying_utils:read_keys(value, BoundObj, TxId),
+    AtomKey = querying_utils:to_atom(Key),
+    BoundObj = querying_utils:build_keys_from_table(AtomKey, Table, TxId),
+    [RefData] = record_utils:record_data(BoundObj, TxId), %querying_utils:read_keys(value, BoundObj, TxId),
     VersionKey = {?VERSION_COL, ?VERSION_COL_DT},
     RefVersion = record_utils:lookup_value(VersionKey, RefData),
 
@@ -181,7 +180,7 @@ is_visible(ObjData, Table, TxId) ->
     %lager:info("PKName: ~p", [PKName]),
     PKValue = querying_utils:to_atom(record_utils:lookup_value(PKName, ObjData)),
     %lager:info("PKValue: ~p", [PKValue]),
-    ObjKey = {PKValue, ?TABLE_DT, table_utils:name(Table)},
+    ObjKey = querying_utils:build_keys(PKValue, ?TABLE_DT, table_utils:name(Table)),
 
     %% TODO delete ObjData
     find_last(ObjState, Rule, ignore) =/= d andalso

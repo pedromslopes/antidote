@@ -212,12 +212,12 @@ process(#apbqueryobjects{filter = BinFilter, transaction_descriptor = Td}, State
     Response = antidote:query_objects(Filter, TxId),
     case Response of
         {error, Reason} ->
-            {reply, antidote_pb_codec:encode(read_objects_response,
+            {reply, antidote_pb_codec:encode(query_objects_response,
                 {error, Reason}), State};
         {ok, Results} ->
-            {reply, antidote_pb_codec:encode(read_objects_response,
-                {ok, Results}),
-                State}
+            BinResults = term_to_binary(Results),
+            {reply, antidote_pb_codec:encode(query_objects_response,
+                {ok, BinResults}), State}
     end.
 
 %% @doc process_stream/3 callback. This service does not create any

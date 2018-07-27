@@ -14,9 +14,9 @@
 -define(TABLE_NAME_DT, antidote_crdt_register_lww).
 -define(COLUMNS, {names}).
 -define(PK_COLUMN, {pk}).
--define(TABLE_METADATA_KEY, '#tables').
+-define(TABLE_METADATA_KEY, <<"#tables">>).
 -define(TABLE_METADATA_DT, antidote_crdt_map_go).
--define(AQL_METADATA_BUCKET, aql_metadata).
+-define(AQL_METADATA_BUCKET, <<"aql_metadata">>).
 -define(SHADOW_COL_DT, antidote_crdt_map_go).
 -define(SHADOW_COL_ENTRY_DT, antidote_crdt_register_mv).
 -define(STATE_COL, '#st').

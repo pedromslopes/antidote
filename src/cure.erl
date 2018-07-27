@@ -92,13 +92,18 @@ obtain_objects(Objects, TxId, StateOrValue) ->
                     -> ok | {error, reason()}.
 update_objects(Updates, TxId) ->
     FormattedUpdates = format_update_params(Updates),
-    case gen_statem:call(TxId#tx_id.server_pid, {update_objects, FormattedUpdates}, ?OP_TIMEOUT) of
+    try
+        gen_statem:call(TxId#tx_id.server_pid, {update_objects, FormattedUpdates}, ?OP_TIMEOUT)
+    of
         ok ->
             ok;
         {aborted, TxId} ->
             {error, {aborted, TxId}};
         {error, Reason} ->
             {error, Reason}
+    catch
+        _Type:_Reason = Error ->
+            {error, Error}
     end.
 
 %% For static transactions: bulk updates and bulk reads

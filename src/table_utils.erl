@@ -38,6 +38,7 @@
          column_names/1,
          primary_key_name/1,
          all_column_names/1,
+         get_column/2,
          tables_metadata/1,
          table_metadata/2,
          is_primary_key/2,
@@ -70,27 +71,40 @@ all_column_names(Table) ->
     SCols = lists:map(fun(?FK(FKName, _FKType, _RefTable, _RefCol, _DelRule)) -> FKName end, foreign_keys(Table)),
     lists:append([['#st', '#version'], TCols, SCols]).
 
+get_column(ColumnName, Table) ->
+    Columns = columns(Table),
+    Res = maps:find(ColumnName, Columns),
+    case Res of
+        {ok, Column} ->
+            Column;
+        _Else ->
+            {error, not_found}
+    end.
+
 %% Metadata from tables are always read from the database;
 %% Only individual table metadata is stored on cache.
 tables_metadata(TxId) ->
     ObjKey = querying_utils:build_keys(?TABLE_METADATA_KEY, ?TABLE_DT, ?AQL_METADATA_BUCKET),
     [Meta] = querying_utils:read_keys(value, ObjKey, TxId),
-    Meta.
+    case Meta of
+        [] -> [];
+        _ -> protobufs_utils:decode_object(?TABLE_DT, Meta)
+    end.
 
-table_metadata(TableName, TxId) ->
-    case metadata_caching:get_key(TableName) of
-        {error, _} ->
+table_metadata(TableName, TxId) when is_atom(TableName) ->
+    %case metadata_caching:get_key(TableName) of
+    %    {error, _} ->
             Metadata = tables_metadata(TxId),
-            TableNameAtom = querying_utils:to_atom(TableName),
-            MetadataKey = {TableNameAtom, ?TABLE_NAME_DT},
+            %TableNameAtom = querying_utils:to_atom(TableName),
+            MetadataKey = {TableName, ?TABLE_NAME_DT},
             case proplists:get_value(MetadataKey, Metadata) of
                 undefined -> [];
                 TableMeta ->
-                    ok = metadata_caching:insert_key(TableName, TableMeta),
+    %                ok = metadata_caching:insert_key(TableName, TableMeta),
                     TableMeta
-            end;
-        TableMetaObj ->
-            TableMetaObj %% table metadata is a 'value' type object
+    %        end;
+    %    TableMetaObj ->
+    %        TableMetaObj %% table metadata is a 'value' type object
     end.
 
 is_primary_key(ColumnName, ?TABLE(_TName, _Policy, Cols, _FKeys, _Idx, _PartCol)) when is_map(Cols) ->

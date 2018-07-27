@@ -56,6 +56,10 @@ read_index(primary, TableName, TxId) ->
     ObjKeys = querying_utils:build_keys(IndexName, ?PINDEX_DT, ?AQL_METADATA_BUCKET),
     [IdxObj] = querying_utils:read_keys(value, ObjKeys, TxId),
     IdxObj;
+    %case IdxObj of
+    %    [] -> [];
+    %    _ -> protobufs_utils:decode_object(?PINDEX_DT, IdxObj)
+    %end;
 read_index(secondary, {TableName, IndexName}, TxId) ->
     %% The secondary index is identified by the notation #2i_<IndexName>, where
     %% <IndexName> = <table_name>.<index_name>
@@ -64,33 +68,45 @@ read_index(secondary, {TableName, IndexName}, TxId) ->
     ObjKeys = querying_utils:build_keys(FullIndexName, ?SINDEX_DT, ?AQL_METADATA_BUCKET),
     [IdxObj] = querying_utils:read_keys(value, ObjKeys, TxId),
     IdxObj.
+    %case IdxObj of
+    %    [] -> [];
+    %    _ -> protobufs_utils:decode_object(?SINDEX_DT, IdxObj)
+    %end.
 
 read_index_function(primary, TableName, {Function, Args}, TxId) ->
     IndexName = generate_pindex_key(TableName),
     ObjKeys = querying_utils:build_keys(IndexName, ?PINDEX_DT, ?AQL_METADATA_BUCKET),
     [IdxObj] = querying_utils:read_function(ObjKeys, {Function, Args}, TxId),
     IdxObj;
+    %case IdxObj of
+    %    [] -> [];
+    %    _ -> protobufs_utils:decode_object(?PINDEX_DT, IdxObj)
+    %end;
 read_index_function(secondary, {TableName, IndexName}, {Function, Args}, TxId) ->
     FullIndexName = generate_sindex_key(TableName, IndexName),
     ObjKeys = querying_utils:build_keys(FullIndexName, ?SINDEX_DT, ?AQL_METADATA_BUCKET),
     [IdxObj] = querying_utils:read_function(ObjKeys, {Function, Args}, TxId),
     IdxObj.
+    %case IdxObj of
+    %    [] -> [];
+    %    _ -> protobufs_utils:decode_object(?SINDEX_DT, IdxObj)
+    %end.
 
 %% TODO
 create_index(_IndexName, _TxId) -> {error, not_implemented}.
 
 generate_pindex_key(TableName) ->
     IndexName = lists:concat([?PINDEX_PREFIX, TableName]),
-    querying_utils:to_atom(IndexName).
+    querying_utils:to_binary(IndexName).
 
 generate_sindex_key(TableName, IndexName) ->
     FullIndexName = lists:concat([?SINDEX_PREFIX, TableName, '.', IndexName]),
-    querying_utils:to_atom(FullIndexName).
+    querying_utils:to_binary(FullIndexName).
 
 apply_updates(Update, TxId) when ?is_index_upd(Update) ->
     apply_updates([Update], TxId);
 apply_updates([Update | Tail], TxId) when ?is_index_upd(Update) ->
-    DatabaseUpdates = index_triggers:build_index_updates([Update], TxId),
+    DatabaseUpdates = index_triggers:create_sindex_updates([Update], TxId),
     ok = querying_utils:write_keys(DatabaseUpdates, TxId),
     apply_updates(Tail, TxId);
 apply_updates([], _TxId) ->

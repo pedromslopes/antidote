@@ -46,9 +46,12 @@
     read_function/3, read_function/2,
     write_keys/2, write_keys/1,
     start_transaction/0, commit_transaction/1,
-    get_locks/3, get_locks/4, release_locks/2,
-    to_atom/1,
+    get_locks/3, get_locks/4, release_locks/2]).
+
+-export([to_atom/1,
     to_list/1,
+    to_binary/1,
+    to_term/1,
     remove_duplicates/1,
     is_list_of_lists/1,
     replace/3,
@@ -64,9 +67,9 @@ build_keys(Key, Type, Bucket) ->
     build_keys([Key], [Type], Bucket).
 
 build_keys([Key | Tail1], [Type | Tail2], Bucket, Acc) ->
-    BucketAtom = to_atom(Bucket),
-    TypeAtom = to_atom(Type),
-    ObjKey = {Key, TypeAtom, BucketAtom},
+    BinKey = convert_to_bin(Key),
+    BinBucket = convert_to_bin(Bucket),
+    ObjKey = {BinKey, Type, BinBucket},
     build_keys(Tail1, Tail2, Bucket, lists:append(Acc, [ObjKey]));
 build_keys([], [], _Bucket, Acc) ->
     Acc.
@@ -76,7 +79,7 @@ build_keys_from_table(Keys, Table, TxId) when is_list(Keys) ->
 build_keys_from_table(Key, Table, TxId) ->
     build_keys_from_table([Key], Table, TxId).
 
-build_keys_from_table([{AtomKey, RawKey} | Keys], Table, TxId, Acc) ->
+build_keys_from_table([Key | Keys], Table, TxId, Acc) ->
     TName = table_utils:name(Table),
     PartCol = table_utils:partition_column(Table),
 
@@ -84,11 +87,11 @@ build_keys_from_table([{AtomKey, RawKey} | Keys], Table, TxId, Acc) ->
         case PartCol of
             [_] ->
                 Index = indexing:read_index(primary, TName, TxId),
-                %% we are only relying on the first key
-                {_, BObj} = lists:keyfind(RawKey, 1, Index),
+                BinKey = term_to_binary(Key),
+                {_, BObj} = lists:keyfind(BinKey, 1, Index),
                 BObj;
             undefined ->
-                [BObj] = build_keys(AtomKey, ?TABLE_DT, TName),
+                [BObj] = build_keys(Key, ?TABLE_DT, TName),
                 BObj
         end,
     build_keys_from_table(Keys, Table, TxId, lists:append(Acc, [BoundKey]));
@@ -228,8 +231,9 @@ to_atom(Term) when is_integer(Term) ->
     List = integer_to_list(Term),
     list_to_atom(List);
 to_atom(Term) when is_binary(Term) ->
-    List = binary_to_list(Term),
-    list_to_atom(List);
+    %List = binary_to_list(Term),
+    %list_to_atom(List);
+    to_atom(binary_to_term(Term));
 to_atom(Term) when is_atom(Term) ->
     Term.
 
@@ -238,9 +242,24 @@ to_list(Term) when is_list(Term) ->
 to_list(Term) when is_integer(Term) ->
     integer_to_list(Term);
 to_list(Term) when is_binary(Term) ->
-    binary_to_list(Term);
+    to_list(binary_to_term(Term));
 to_list(Term) when is_atom(Term) ->
     atom_to_list(Term).
+
+to_binary(Term) when is_list(Term) ->
+    list_to_binary(Term);
+to_binary(Term) when is_integer(Term) ->
+    integer_to_binary(Term);
+to_binary(Term) when is_binary(Term) ->
+    Term;
+to_binary(Term) when is_atom(Term) ->
+    ToList = atom_to_list(Term),
+    list_to_binary(ToList).
+
+to_term(Term) when is_binary(Term) ->
+    binary_to_term(Term);
+to_term(Term) ->
+    Term.
 
 remove_duplicates(List) when is_list(List) ->
     Aux = sets:from_list(List),
@@ -272,8 +291,11 @@ first_occurrence(_Predicate, []) -> undefined.
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
+convert_to_bin(Term) when is_binary(Term) ->
+    Term;
+convert_to_bin(Term) ->
+    list_to_binary(querying_utils:to_list(Term)).
 
-%% TODO read objects from Cure or Materializer?
 read_crdts(StateOrValue, ObjKeys, {TxId, _ReadSet, _UpdatedPartitions} = Transaction)
     when is_list(ObjKeys) andalso is_record(TxId, transaction) ->
     {ok, Objs} = read_data_items(StateOrValue, ObjKeys, Transaction),
