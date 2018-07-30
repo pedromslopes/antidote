@@ -138,7 +138,7 @@ update_type(_) ->
 
 generate_index_updates(Key, Type, Bucket, Param, Transaction) ->
     {UpdateOp, Updates} = Param,
-    ObjUpdate = ?OBJECT_UPDATE(Key, Type, Bucket, UpdateOp, Updates),
+    _ObjUpdate = ?OBJECT_UPDATE(Key, Type, Bucket, UpdateOp, Updates),
     ObjBoundKey = {Key, Type, Bucket},
 
     case update_type({Key, Type, Bucket}) of
@@ -148,9 +148,9 @@ generate_index_updates(Key, Type, Bucket, Param, Transaction) ->
 
             [{{TableName, _}, _}] = Updates,
 
-            Table = table_utils:table_metadata(TableName, Transaction),
-            SIdxUpdates = fill_index(ObjUpdate, Table, Transaction),
-            Upds = create_sindex_updates(SIdxUpdates, Transaction),
+            _Table = table_utils:table_metadata(TableName, Transaction),
+            %SIdxUpdates = fill_index(ObjUpdate, Table, Transaction),
+            Upds = create_sindex_updates([], Transaction),
 
             %% Remove table metadata entry from cache -- mark as 'dirty'
             ok = metadata_caching:remove_key(TableName),
@@ -172,11 +172,11 @@ generate_index_updates(Key, Type, Bucket, Param, Transaction) ->
                     [PIdxKey] = querying_utils:build_keys(PIdxName, ?PINDEX_DT, ?AQL_METADATA_BUCKET),
 
                     PIdxUpdate = create_pindex_update(ObjBoundKey, Updates, Table, PIdxKey, Transaction),
-                    PrepareIdxUpdates = build_index_updates(Updates, ObjBoundKey, Table),
-                    SIdxUpdates = create_sindex_updates(PrepareIdxUpdates, Transaction),
+                    %PrepareIdxUpdates = build_index_updates(Updates, ObjBoundKey, Table),
+                    %SIdxUpdates = create_sindex_updates(PrepareIdxUpdates, Transaction),
                     %lager:info("SIdxUpdates: ~p", [SIdxUpdates]),
 
-                    lists:append([PIdxUpdate], SIdxUpdates)
+                    [PIdxUpdate]
             end;
         _ -> []
     end.

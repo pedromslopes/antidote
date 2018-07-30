@@ -214,16 +214,16 @@ satisfies_predicate({Column, Predicate}, Table, Record, TxId) ->
     end.
 
 %% TODO support this search to comprise indexes with multiple attributes
-find_index_by_attribute(_Attribute, []) -> [];
-find_index_by_attribute(Attribute, IndexList) when is_list(IndexList) ->
-    lists:foldl(fun(Elem, Acc) ->
-        ?INDEX(_IdxName, _TName, Cols) = Elem,
-        case lists:member(Attribute, Cols) of
-            true -> lists:append(Acc, [Elem]);
-            false -> Acc
-        end
-     end, [], IndexList);
-find_index_by_attribute(_Attribute, _Idx) -> [].
+%%find_index_by_attribute(_Attribute, []) -> [];
+%%find_index_by_attribute(Attribute, IndexList) when is_list(IndexList) ->
+%%    lists:foldl(fun(Elem, Acc) ->
+%%        ?INDEX(_IdxName, _TName, Cols) = Elem,
+%%        case lists:member(Attribute, Cols) of
+%%            true -> lists:append(Acc, [Elem]);
+%%            false -> Acc
+%%        end
+%%     end, [], IndexList);
+%%find_index_by_attribute(_Attribute, _Idx) -> [].
 
 validate_projection(?WILDCARD, Columns) ->
     {ok, Columns};
@@ -347,11 +347,12 @@ read_indexes(RangeQueries, Table) ->
                     true ->
                         {RemainAcc, lists:append(IdxAcc, [{primary, TableName}])};
                     false ->
-                        SIndexes = table_utils:indexes(Table),
-                        case find_index_by_attribute(Column, SIndexes) of
-                            [] -> {dict:store(Column, Range, RemainAcc), IdxAcc};
-                            [SIndex] -> {RemainAcc, lists:append(IdxAcc, [{secondary, SIndex}])}
-                        end
+                        {dict:store(Column, Range, RemainAcc), IdxAcc}
+%%                        SIndexes = table_utils:indexes(Table),
+%%                        case find_index_by_attribute(Column, SIndexes) of
+%%                            [] -> {dict:store(Column, Range, RemainAcc), IdxAcc};
+%%                            [SIndex] -> {RemainAcc, lists:append(IdxAcc, [{secondary, SIndex}])}
+%%                        end
                 end
         end
     end, {dict:new(), []}, RangeQueries).
