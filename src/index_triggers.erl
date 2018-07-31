@@ -137,8 +137,8 @@ update_type(_) ->
     ?OTHER_UPD_TYPE.
 
 generate_index_updates(Key, Type, Bucket, Param, Transaction) ->
-    {UpdateOp, Updates} = Param,
-    _ObjUpdate = ?OBJECT_UPDATE(Key, Type, Bucket, UpdateOp, Updates),
+    {_UpdateOp, Updates} = Param,
+    %%ObjUpdate = ?OBJECT_UPDATE(Key, Type, Bucket, UpdateOp, Updates),
     ObjBoundKey = {Key, Type, Bucket},
 
     case update_type({Key, Type, Bucket}) of
@@ -148,14 +148,15 @@ generate_index_updates(Key, Type, Bucket, Param, Transaction) ->
 
             [{{TableName, _}, _}] = Updates,
 
-            _Table = table_utils:table_metadata(TableName, Transaction),
-            %SIdxUpdates = fill_index(ObjUpdate, Table, Transaction),
-            Upds = create_sindex_updates([], Transaction),
+            %%Table = table_utils:table_metadata(TableName, Transaction),
+            %%SIdxUpdates = fill_index(ObjUpdate, Table, Transaction),
+            %%Upds = create_sindex_updates([], Transaction),
 
             %% Remove table metadata entry from cache -- mark as 'dirty'
             ok = metadata_caching:remove_key(TableName),
 
-            Upds;
+            %%Upds;
+            [];
         ?RECORD_UPD_TYPE ->
             % Is a record update
             %lager:info("Is a record update: ~p", [ObjUpdate]),
@@ -181,70 +182,70 @@ generate_index_updates(Key, Type, Bucket, Param, Transaction) ->
         _ -> []
     end.
 
-fill_index(ObjUpdate, Table, Transaction) ->
-    case retrieve_index(ObjUpdate, Table) of
-        [] ->
-            % No index was created
-            %lager:info("No index was created"),
-            [];
-        Indexes when is_list(Indexes) ->
-            lists:foldl(fun(Index, Acc) ->
-                % A new index was created
-                %lager:info("A new index was created"),
+%%fill_index(ObjUpdate, Table, Transaction) ->
+%%    case retrieve_index(ObjUpdate, Table) of
+%%        [] ->
+%%            % No index was created
+%%            %lager:info("No index was created"),
+%%            [];
+%%        Indexes when is_list(Indexes) ->
+%%            lists:foldl(fun(Index, Acc) ->
+%%                % A new index was created
+%%                %lager:info("A new index was created"),
+%%
+%%                ?INDEX(IndexName, TableName, [IndexedColumn]) = Index, %% TODO support more than one column
+%%                %[PrimaryKey] = table_utils:primary_key_name(NewTable),
+%%                PIndexObject = indexing:read_index(primary, TableName, Transaction),
+%%                %SIndexObject = indexing:read_index(secondary, {TableName, IndexName}, Transaction),
+%%
+%%                IdxUpds = lists:map(fun({RawKey, BoundKey}) ->
+%%                    case record_utils:record_data(BoundKey, Transaction) of
+%%                        [] -> [];
+%%                        [Record] ->
+%%                            %%PkValue = querying_utils:to_atom(record_utils:lookup_value(PrimaryKey, Record)),
+%%                            ?ATTRIBUTE(_ColName, Type, Value) = record_utils:get_column(IndexedColumn, Record),
+%%                            AtomKey = querying_utils:to_atom(RawKey),
+%%                            BObjOp = crdt_utils:to_insert_op(?CRDT_VARCHAR, BoundKey),
+%%                            IndexValOp = crdt_utils:to_insert_op(Type, Value),
+%%                            IndexValOps =
+%%                                case is_list(IndexValOp) of
+%%                                    true -> lists:map(fun(IdxOp) -> {index_val, Type, IdxOp} end, IndexValOp);
+%%                                    false -> [{index_val, Type, IndexValOp}]
+%%                                end,
+%%                            Op = lists:append([{bound_obj, ?FIELD_BOBJ_DT, BObjOp}], IndexValOps),
+%%                            ?INDEX_UPD(TableName, IndexName, {Value, Type}, {AtomKey, Op})
+%%                    end
+%%                end, PIndexObject),
+%%                lists:append(Acc, lists:flatten(IdxUpds))
+%%            end, [], Indexes)
+%%    end.
 
-                ?INDEX(IndexName, TableName, [IndexedColumn]) = Index, %% TODO support more than one column
-                %[PrimaryKey] = table_utils:primary_key_name(NewTable),
-                PIndexObject = indexing:read_index(primary, TableName, Transaction),
-                %SIndexObject = indexing:read_index(secondary, {TableName, IndexName}, Transaction),
+%%build_index_updates(Updates, ObjBoundKey, Table) when is_list(Updates) ->
+%%    build_index_updates(Updates, ObjBoundKey, Table, []);
+%%build_index_updates(Update, ObjBoundKey, Table) ->
+%%    build_index_updates([Update], ObjBoundKey, Table, []).
 
-                IdxUpds = lists:map(fun({RawKey, BoundKey}) ->
-                    case record_utils:record_data(BoundKey, Transaction) of
-                        [] -> [];
-                        [Record] ->
-                            %%PkValue = querying_utils:to_atom(record_utils:lookup_value(PrimaryKey, Record)),
-                            ?ATTRIBUTE(_ColName, Type, Value) = record_utils:get_column(IndexedColumn, Record),
-                            AtomKey = querying_utils:to_atom(RawKey),
-                            BObjOp = crdt_utils:to_insert_op(?CRDT_VARCHAR, BoundKey),
-                            IndexValOp = crdt_utils:to_insert_op(Type, Value),
-                            IndexValOps =
-                                case is_list(IndexValOp) of
-                                    true -> lists:map(fun(IdxOp) -> {index_val, Type, IdxOp} end, IndexValOp);
-                                    false -> [{index_val, Type, IndexValOp}]
-                                end,
-                            Op = lists:append([{bound_obj, ?FIELD_BOBJ_DT, BObjOp}], IndexValOps),
-                            ?INDEX_UPD(TableName, IndexName, {Value, Type}, {AtomKey, Op})
-                    end
-                end, PIndexObject),
-                lists:append(Acc, lists:flatten(IdxUpds))
-            end, [], Indexes)
-    end.
-
-build_index_updates(Updates, ObjBoundKey, Table) when is_list(Updates) ->
-    build_index_updates(Updates, ObjBoundKey, Table, []);
-build_index_updates(Update, ObjBoundKey, Table) ->
-    build_index_updates([Update], ObjBoundKey, Table, []).
-
-build_index_updates([Update | Updates], ObjBoundKey, Table, Acc) ->
-    {Key, _Type, _Bucket} = ObjBoundKey,
-    Indexes = table_utils:indexes(Table),
-    TName = table_utils:name(Table),
-    {{Col, CRDT}, {_CRDTOper, Val} = IndexValOp} = Update,
-    NewAcc =
-        case indexing:lookup_index(Col, Indexes) of
-            [] ->
-                Acc;
-            Idxs ->
-                AuxUpdates = lists:map(fun(Idx) ->
-                    BObjOp = crdt_utils:to_insert_op(?CRDT_VARCHAR, ObjBoundKey),
-                    EntryOp = [{bound_obj, ?FIELD_BOBJ_DT, BObjOp}, {index_val, CRDT, IndexValOp}],
-
-                    ?INDEX_UPD(TName, indexing:index_name(Idx), {Val, CRDT}, {Key, EntryOp})
-                end, Idxs),
-                lists:append(Acc, AuxUpdates)
-        end,
-    build_index_updates(Updates, ObjBoundKey, Table, NewAcc);
-build_index_updates([], _ObjBoundKey, _Table, Acc) ->
-    Acc.
+%%build_index_updates([Update | Updates], ObjBoundKey, Table, Acc) ->
+%%    {Key, _Type, _Bucket} = ObjBoundKey,
+%%    Indexes = table_utils:indexes(Table),
+%%    TName = table_utils:name(Table),
+%%    {{Col, CRDT}, {_CRDTOper, Val} = IndexValOp} = Update,
+%%    NewAcc =
+%%        case indexing:lookup_index(Col, Indexes) of
+%%            [] ->
+%%                Acc;
+%%            Idxs ->
+%%                AuxUpdates = lists:map(fun(Idx) ->
+%%                    BObjOp = crdt_utils:to_insert_op(?CRDT_VARCHAR, ObjBoundKey),
+%%                    EntryOp = [{bound_obj, ?FIELD_BOBJ_DT, BObjOp}, {index_val, CRDT, IndexValOp}],
+%%
+%%                    ?INDEX_UPD(TName, indexing:index_name(Idx), {Val, CRDT}, {Key, EntryOp})
+%%                end, Idxs),
+%%                lists:append(Acc, AuxUpdates)
+%%        end,
+%%    build_index_updates(Updates, ObjBoundKey, Table, NewAcc);
+%%build_index_updates([], _ObjBoundKey, _Table, Acc) ->
+%%    Acc.
 
 %% Given a list of index updates on the form {TableName, IndexName, {EntryKey, EntryValue}},
 %% build the database updates given that it may be necessary to delete old entries and
@@ -278,20 +279,20 @@ create_sindex_updates(Updates, _TxId) when is_list(Updates) ->
 create_sindex_updates(Update, TxId) when ?is_index_upd(Update) ->
     create_sindex_updates([Update], TxId).
 
-retrieve_index(ObjUpdate, Table) ->
-    ?OBJECT_UPDATE(_Key, _Type, _Bucket, _UpdOp, [Assign]) = ObjUpdate,
-    ?MAP_UPD(_TableName, _CRDT, _CRDTOp, NewTableMeta) = Assign,
-
-    CurrentIdx =
-        case Table of
-            [] -> [];
-            _ -> table_utils:indexes(Table)
-        end,
-    NIdx = table_utils:indexes(NewTableMeta),
-    NewIndexes = lists:filter(fun(?INDEX(IndexName, _, _)) ->
-        not lists:keymember(IndexName, 1, CurrentIdx)
-    end, NIdx),
-    NewIndexes.
+%%retrieve_index(ObjUpdate, Table) ->
+%%    ?OBJECT_UPDATE(_Key, _Type, _Bucket, _UpdOp, [Assign]) = ObjUpdate,
+%%    ?MAP_UPD(_TableName, _CRDT, _CRDTOp, NewTableMeta) = Assign,
+%%
+%%    CurrentIdx =
+%%        case Table of
+%%            [] -> [];
+%%            _ -> table_utils:indexes(Table)
+%%        end,
+%%    NIdx = table_utils:indexes(NewTableMeta),
+%%    NewIndexes = lists:filter(fun(?INDEX(IndexName, _, _)) ->
+%%        not lists:keymember(IndexName, 1, CurrentIdx)
+%%    end, NIdx),
+%%    NewIndexes.
 
 create_pindex_update(ObjBoundKey, Updates, Table, PIndexKey, Transaction) ->
     TableCols = table_utils:columns(Table),
