@@ -423,7 +423,7 @@ filter_index(Range, IndexType, IndexName, ColSpec, Table, TxId) ->
         range ->
             {{LeftBound, RightBound}, Excluded} = Range,
             Index = indexing:read_index_function(IndexType, IndexName,
-                {range, {send_range(LeftBound, ColSpec), send_range(RightBound, ColSpec)}}, TxId),
+            {range, {send_range(LeftBound, ColSpec), send_range(RightBound, ColSpec)}}, TxId),
 
             EncExcluded = [send_binary(Elem, ColSpec) || Elem <- Excluded],
             lists:filter(fun({IdxCol, _}) ->

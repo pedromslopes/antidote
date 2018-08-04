@@ -91,20 +91,20 @@ tables_metadata(TxId) ->
         _ -> protobufs_utils:decode_object(?TABLE_DT, Meta)
     end.
 
-table_metadata(TableName, TxId) when is_atom(TableName) ->
-    %case metadata_caching:get_key(TableName) of
-    %    {error, _} ->
+table_metadata(TableName, TxId) ->
+    case metadata_caching:get_key(TableName) of
+        {error, _} ->
             Metadata = tables_metadata(TxId),
             %TableNameAtom = querying_utils:to_atom(TableName),
             MetadataKey = {TableName, ?TABLE_NAME_DT},
             case proplists:get_value(MetadataKey, Metadata) of
                 undefined -> [];
                 TableMeta ->
-    %                ok = metadata_caching:insert_key(TableName, TableMeta),
+                    ok = metadata_caching:insert_key(TableName, TableMeta),
                     TableMeta
-    %        end;
-    %    TableMetaObj ->
-    %        TableMetaObj %% table metadata is a 'value' type object
+            end;
+        TableMetaObj ->
+            TableMetaObj %% table metadata is a 'value' type object
     end.
 
 is_primary_key(ColumnName, ?TABLE(_TName, _Policy, Cols, _FKeys, _Idx, _PartCol)) when is_map(Cols) ->
