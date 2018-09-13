@@ -355,25 +355,6 @@ read_predicate(Range) ->
             fun(V) -> Pred1(V) andalso Pred2(V) end
     end.
 
-%%read_predicate_pk(Range) ->
-%%    case range_queries:to_predicate(Range) of
-%%        {{{_, LPred}, infinity}, Inequality} ->
-%%            fun({V, _, _}) -> LPred(V) andalso Inequality(V) end;
-%%        {{infinity, {_, RPred}}, Inequality} ->
-%%            fun({V, _, _}) -> RPred(V) andalso Inequality(V) end;
-%%        {{{_, LPred}, {_, RPred}}, Inequality} ->
-%%            fun({V, _, _}) -> LPred(V) andalso RPred(V) andalso Inequality(V) end;
-%%        {ignore, Pred} when is_function(Pred) ->
-%%            fun({V, _, _}) -> Pred(V) end;
-%%        {Pred1, Pred2} when is_function(Pred1) and is_function(Pred2) ->
-%%            fun({V, _, _}) -> Pred1(V) andalso Pred2(V) end
-%%    end.
-%%
-%%read_pk_predicate(Range) ->
-%%    {{{LB, Val1}, {RB, Val2}}, Excluded} = Range,
-%%    NewRange = {{LB, querying_utils:to_atom(Val1)}, {RB, querying_utils:to_atom(Val2)}},
-%%    read_predicate_pk({NewRange, Excluded}).
-
 read_indexes(RangeQueries, Table) ->
     TableName = table_utils:name(Table),
     dict:fold(fun(Column, Range, {RemainAcc, IdxAcc}) ->
