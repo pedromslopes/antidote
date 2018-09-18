@@ -71,6 +71,7 @@ init(_Args) ->
 
     QueryOptimizer = ?CHILD(query_optimizer, worker, []),
     IndexManager = ?CHILD(index_manager, worker, []),
+    QueryingUtilsCoordSup = ?CHILD(querying_utils, worker, []),
 
     BCounterManager = ?CHILD(bcounter_mgr, worker, []),
     LockManager = ?CHILD(lock_mgr, worker, []),
@@ -143,5 +144,6 @@ init(_Args) ->
        LockManager_es,
        QueryOptimizer,
        IndexManager,
+       QueryingUtilsCoordSup,
        LogResponseReaderSup,
        Elli]}}.
